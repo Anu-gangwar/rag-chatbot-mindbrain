@@ -13,7 +13,7 @@ hr_policy = [
     "Notice period during probation is 15 days, post probation is 60 days."
 ]
 
-model = SentenceTransformer('all-MiniLM-L6-v2') # ✅ Line 16 FIX - Capital S
+model = SentenceTransformer('paraphrase-albert-small-v2') # ✅ Line 16 FIX - Capital S
 embeddings = model.encode(hr_policy)
 index = faiss.IndexFlatL2(embeddings.shape[1])
 index.add(np.array(embeddings))
