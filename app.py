@@ -5,8 +5,7 @@ from flask import Flask, request, jsonify, render_template_string
 app = Flask(__name__)
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
-
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
 HR_DOCS = [
     "Leave Policy: Employees are entitled to 24 paid leaves per year. 12 casual leaves and 12 sick leaves.",
     "Work From Home Policy: Employees can work from home 2 days per week with manager approval.",
