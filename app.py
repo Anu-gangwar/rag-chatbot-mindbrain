@@ -1,38 +1,51 @@
 from flask import Flask, render_template, request, jsonify
-from sentence_transformers import SentenceTransformer # ✅ Line 2 FIX
-import faiss
+import json
+import requests
 import numpy as np
 import os
 
 app = Flask(__name__)
-hr_policy = [
-    "MindBrain employees get 20 paid leaves per year.",
-    "Work from home is allowed 2 days per week with manager approval.", 
-    "Maternity leave is 26 weeks as per company policy.",
-    "Provident Fund contribution is 12% from employee and employer both.",
-    "Notice period during probation is 15 days, post probation is 60 days."
-]
 
-model = SentenceTransformer('paraphrase-albert-small-v2') # ✅ Line 16 FIX - Capital S
-embeddings = model.encode(hr_policy)
-index = faiss.IndexFlatL2(embeddings.shape[1])
-index.add(np.array(embeddings))
+# HuggingFace API - Free, No RAM usage
+HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/paraphrase-albert-small-v2"
+HF_TOKEN = os.getenv("HF_TOKEN") # Render me baad me add karenge
+
+def get_embedding(text):
+    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+    response = requests.post(HF_API_URL, headers=headers, json={"inputs": text})
+    return np.array(response.json())
+
+# Load FAQs
+with open('faqs.json', 'r') as f:
+    faqs = json.load(f)
+
+# Pre-compute embeddings once at startup using API
+faq_questions = [item['question'] for item in faqs]
+print("Computing embeddings via HuggingFace API...")
+faq_embeddings = np.array([get_embedding(q) for q in faq_questions])
+print("Embeddings ready!")
 
 @app.route('/')
 def home():
     return render_template('index.html')
 
-@app.route('/ask', methods=['POST']) # ✅ '/query' ko '/ask' kar de
+@app.route('/ask', methods=['POST'])
 def ask():
-    question = request.json['question']
-    q_embedding = model.encode([question])
-    D, I = index.search(np.array(q_embedding), k=2)
+    user_question = request.json['question']
+    user_embedding = get_embedding(user_question)
     
-    context = " ".join([hr_policy[i] for i in I[0]])
-    answer = f"Based on HR Policy: {context}"
+    # Cosine similarity
+    similarities = np.dot(faq_embeddings, user_embedding) / (
+        np.linalg.norm(faq_embeddings, axis=1) * np.linalg.norm(user_embedding)
+    )
+    best_match_idx = np.argmax(similarities)
+    
+    if similarities[best_match_idx] > 0.6:
+        answer = faqs[best_match_idx]['answer']
+    else:
+        answer = "Sorry, main is sawaal ka jawab nahi de paayi. Kripya MindBrain ke website pe contact karein."
     
     return jsonify({'answer': answer})
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+    app.run(debug=True)
