@@ -4,13 +4,9 @@ from flask import Flask, request, jsonify, render_template_string
 
 app = Flask(__name__)
 
-HF_TOKEN = os.environ.get("HF_TOKEN")
-API_URL = "https://api-inference.huggingface.co/models/HuggingFaceH4/zephyr-7b-beta"
-EMBED_URL = "https://api-inference.huggingface.co/models/sentence-transformers/paraphrase-albert-small-v2"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key={GEMINI_API_KEY}"
 
-headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-
-# Dummy HR Policy Data - Isko apne hisaab se badal lena
 HR_DOCS = [
     "Leave Policy: Employees are entitled to 24 paid leaves per year. 12 casual leaves and 12 sick leaves.",
     "Work From Home Policy: Employees can work from home 2 days per week with manager approval.",
@@ -19,43 +15,35 @@ HR_DOCS = [
     "Notice Period: Standard notice period is 60 days for confirmed employees."
 ]
 
-def get_embedding(text):
-    payload = {"inputs": text}
-    response = requests.post(EMBED_URL, headers=headers, json=payload)
-    if response.status_code!= 200:
-        return None
-    return response.json()
-
 def get_relevant_doc(query):
-    # Simple keyword matching for Render free tier - no vectors needed
     query_lower = query.lower()
     for doc in HR_DOCS:
         if any(word in doc.lower() for word in query_lower.split()):
             return doc
-    return HR_DOCS[0] # Default fallback
+    return "General HR Policy: For specific queries please contact HR department."
 
-def query_llm(context, question):
-    prompt = f"""<|system|>
-You are MindBrain HR Policy Chatbot. Answer only from the given context. Be helpful and concise.</s>
-<|user|>
+def query_gemini(context, question):
+    prompt = f"""You are MindBrain HR Policy Chatbot. Answer ONLY from the context given below. Be helpful and concise.
+
 Context: {context}
-Question: {question}</s>
-<|assistant|>
-"""
+
+Question: {question}
+Answer:"""
 
     payload = {
-        "inputs": prompt,
-        "parameters": {"max_new_tokens": 200, "temperature": 0.7}
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 200}
     }
 
-    response = requests.post(API_URL, headers=headers, json=payload)
-    if response.status_code!= 200:
-        return "Sorry, I'm having trouble connecting to the AI model. Please try again."
-
-    result = response.json()
-    if isinstance(result, list):
-        return result[0]['generated_text'].split("<|assistant|>")[-1].strip()
-    return "Sorry, I couldn't generate a response."
+    try:
+        response = requests.post(GEMINI_URL, json=payload, timeout=30)
+        if response.status_code == 200:
+            result = response.json()
+            return result['candidates'][0]['content']['parts'][0]['text'].strip()
+        else:
+            return f"API error: {response.status_code}. Check GEMINI_API_KEY."
+    except Exception as e:
+        return "Sorry, I'm having trouble connecting. Please try again."
 
 @app.route('/')
 def home():
@@ -74,7 +62,6 @@ def home():
            .bot { color: green; margin: 5px 0; }
             input { width: 75%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; }
             button { width: 20%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-            button:hover { background: #0056b3; }
         </style>
     </head>
     <body>
@@ -84,19 +71,16 @@ def home():
             <input type="text" id="userInput" placeholder="Ask about HR policies..." />
             <button onclick="sendMessage()">Ask</button>
         </div>
-
         <script>
             function sendMessage() {
                 var input = document.getElementById("userInput");
                 var chat = document.getElementById("chat");
                 var userText = input.value;
                 if (userText.trim() === "") return;
-
                 chat.innerHTML += "<div class='user'><b>You:</b> " + userText + "</div>";
                 input.value = "";
                 chat.innerHTML += "<div class='bot'><b>Bot:</b> Thinking...</div>";
                 chat.scrollTop = chat.scrollHeight;
-
                 fetch("/chat", {
                     method: "POST",
                     headers: {"Content-Type": "application/json"},
@@ -108,7 +92,6 @@ def home():
                     chat.scrollTop = chat.scrollHeight;
                 });
             }
-
             document.getElementById("userInput").addEventListener("keypress", function(e) {
                 if (e.key === "Enter") sendMessage();
             });
@@ -121,7 +104,7 @@ def home():
 def chat():
     user_message = request.json['message']
     context = get_relevant_doc(user_message)
-    response = query_llm(context, user_message)
+    response = query_gemini(context, user_message)
     return jsonify({"response": response})
 
 if __name__ == '__main__':
