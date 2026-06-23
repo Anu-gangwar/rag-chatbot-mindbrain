@@ -16,8 +16,9 @@ def get_embedding(text):
     return np.array(response.json())
 
 # Load FAQs
-with open('faqs.json', 'r') as f:
-    faqs = json.load(f)
+#with open('faqs.json', 'r') as f:
+   # faqs = json.load(f)
+faqs = []
 
 # Pre-compute embeddings once at startup using API
 faq_questions = [item['question'] for item in faqs]
